@@ -1,6 +1,4 @@
 # rider.py
-# Enhanced Rider class for discrete-event simulation engine
-
 class Rider:
     def __init__(self, rider_id, start_location, destination):
         """

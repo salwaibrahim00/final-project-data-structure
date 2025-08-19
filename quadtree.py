@@ -1,94 +1,151 @@
+
+import math
+
 class Rectangle:
-    """Helper class to represent a rectangular boundary"""
-    def __init__(self, x, y, w, h):
-        self.x = x      # center x
-        self.y = y      # center y
-        self.w = w      # half width
-        self.h = h      # half height
-
+    """My Rectangle class for Quadtree boundaries"""
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y 
+        self.width = width
+        self.height = height
+        
     def contains(self, point):
-        px, py = point
-        return (self.x - self.w <= px <= self.x + self.w and
-                self.y - self.h <= py <= self.y + self.h)
+        return (self.x <= point[0] < self.x + self.width and 
+                self.y <= point[1] < self.y + self.height)
+    
+    def intersects(self, other):
+        return not (self.x >= other.x + other.width or 
+                   other.x >= self.x + self.width or
+                   self.y >= other.y + other.height or 
+                   other.y >= self.y + self.height)
 
-    def distance_to_point(self, point):
-        px, py = point
-        dx = max(abs(px - self.x) - self.w, 0)
-        dy = max(abs(py - self.y) - self.h, 0)
-        return (dx ** 2 + dy ** 2) ** 0.5
-
-
-class QuadtreeNode:
+class Quadtree:
+    """
+    My Quadtree implementation - enhanced for car management.
+    I built this for spatial indexing and now I'm using it for the simulation.
+    """
     def __init__(self, boundary, capacity=4):
         self.boundary = boundary
         self.capacity = capacity
-        self.points = []
+        self.points = []  # Store car locations
+        self.car_map = {}  # Map locations to car objects - my enhancement
         self.divided = False
+        
+        # Subdivisions - my original structure
         self.northwest = None
         self.northeast = None
         self.southwest = None
         self.southeast = None
-
-    def subdivide(self):
-        x, y = self.boundary.x, self.boundary.y
-        w, h = self.boundary.w / 2, self.boundary.h / 2
-
-        self.northwest = QuadtreeNode(Rectangle(x - w, y + h, w, h), self.capacity)
-        self.northeast = QuadtreeNode(Rectangle(x + w, y + h, w, h), self.capacity)
-        self.southwest = QuadtreeNode(Rectangle(x - w, y - h, w, h), self.capacity)
-        self.southeast = QuadtreeNode(Rectangle(x + w, y - h, w, h), self.capacity)
-        self.divided = True
-
-    def insert(self, point):
+    
+    def insert(self, point, car=None):
+        """
+        Insert a point (car location) into my Quadtree.
+        Enhanced to track car objects.
+        """
         if not self.boundary.contains(point):
             return False
-
+            
+        if car:
+            self.car_map[point] = car  # Track the car object
+            
         if len(self.points) < self.capacity:
             self.points.append(point)
             return True
-        else:
-            if not self.divided:
-                self.subdivide()
-
-            if self.northwest.insert(point): return True
-            if self.northeast.insert(point): return True
-            if self.southwest.insert(point): return True
-            if self.southeast.insert(point): return True
-
-        return False
-
-    def find_nearest(self, query_point, best=None, best_dist=float('inf')):
-        # Prune if this node cannot contain a closer point
-        dist_to_boundary = self.boundary.distance_to_point(query_point)
-        if dist_to_boundary > best_dist:
-            return best, best_dist
-
-        # Check points in this node
-        for pt in self.points:
-            dist = ((pt[0] - query_point[0]) ** 2 + (pt[1] - query_point[1]) ** 2) ** 0.5
-            if dist < best_dist:
-                best, best_dist = pt, dist
-
-        # Recursively check children nodes
+            
+        if not self.divided:
+            self.subdivide()
+            
+        # Try to insert in subdivisions - my recursive approach
+        return (self.northwest.insert(point, car) or 
+                self.northeast.insert(point, car) or
+                self.southwest.insert(point, car) or 
+                self.southeast.insert(point, car))
+    
+    def subdivide(self):
+        """My subdivision logic"""
+        x, y = self.boundary.x, self.boundary.y
+        w, h = self.boundary.width / 2, self.boundary.height / 2
+        
+        self.northwest = Quadtree(Rectangle(x, y, w, h), self.capacity)
+        self.northeast = Quadtree(Rectangle(x + w, y, w, h), self.capacity)
+        self.southwest = Quadtree(Rectangle(x, y + h, w, h), self.capacity)
+        self.southeast = Quadtree(Rectangle(x + w, y + h, w, h), self.capacity)
+        
+        self.divided = True
+    
+    def remove(self, point):
+        """
+        Remove a point from my Quadtree.
+        I added this for when cars get assigned.
+        """
+        if point in self.points:
+            self.points.remove(point)
+            if point in self.car_map:
+                del self.car_map[point]
+            return True
+        
         if self.divided:
-            # Order children so we search the quadrant closest to query_point first
-            children = [self.northwest, self.northeast, self.southwest, self.southeast]
-            children.sort(key=lambda node: ((node.boundary.x - query_point[0]) ** 2 +
-                                            (node.boundary.y - query_point[1]) ** 2) ** 0.5)
-
-            for child in children:
-                best, best_dist = child.find_nearest(query_point, best, best_dist)
-
-        return best, best_dist
-
-
-class Quadtree:
-    def __init__(self, boundary, capacity=4):
-        self.root = QuadtreeNode(boundary, capacity)
-
-    def insert(self, point):
-        return self.root.insert(point)
-
+            return (self.northwest.remove(point) or
+                   self.northeast.remove(point) or
+                   self.southwest.remove(point) or
+                   self.southeast.remove(point))
+        
+        return False
+    
     def find_nearest(self, query_point):
-        best, _ = self.root.find_nearest(query_point)
-        return best
+        """My nearest neighbor search - keeping my original implementation"""
+        best_point = None
+        best_distance = float('inf')
+        
+        self._find_nearest_recursive(query_point, best_point, best_distance)
+        return best_point
+    
+    def _find_nearest_recursive(self, query_point, best_point, best_distance):
+        """My recursive nearest search helper"""
+        for point in self.points:
+            distance = math.sqrt((point[0] - query_point[0])**2 + 
+                               (point[1] - query_point[1])**2)
+            if distance < best_distance:
+                best_distance = distance
+                best_point = point
+        
+        if self.divided:
+            self.northwest._find_nearest_recursive(query_point, best_point, best_distance)
+            self.northeast._find_nearest_recursive(query_point, best_point, best_distance)
+            self.southwest._find_nearest_recursive(query_point, best_point, best_distance)
+            self.southeast._find_nearest_recursive(query_point, best_point, best_distance)
+        
+        return best_point
+    
+    def find_k_nearest(self, query_point, k=5):
+        """
+        Find k nearest points - I enhanced this for the car matching requirement.
+        Returns up to k nearest car locations.
+        """
+        all_points = []
+        self._collect_all_points(all_points)
+        
+        # Calculate distances and sort - my approach
+        point_distances = []
+        for point in all_points:
+            distance = math.sqrt((point[0] - query_point[0])**2 + 
+                               (point[1] - query_point[1])**2)
+            point_distances.append((distance, point))
+        
+        # Sort by distance and return k closest
+        point_distances.sort()
+        return [point for _, point in point_distances[:k]]
+    
+    def _collect_all_points(self, all_points):
+        """Helper to collect all points in the tree"""
+        all_points.extend(self.points)
+        
+        if self.divided:
+            self.northwest._collect_all_points(all_points)
+            self.northeast._collect_all_points(all_points)
+            self.southwest._collect_all_points(all_points)
+            self.southeast._collect_all_points(all_points)
+    
+    def get_car_at_location(self, location):
+        """Get the car object at a specific location - my helper method"""
+        return self.car_map.get(location)
